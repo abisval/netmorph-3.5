@@ -1,107 +1,75 @@
-import tkinter as tk
-from tkinter import filedialog, ttk
 import os
-
+import tkinter as tk
+from tkinter import ttk, filedialog, messagebox
+from .CockpitState import CockpitState
 
 class CockpitGUI:
-    def __init__(self, master):
-        self.master = master
-        self.master.title("🧭 NetMorph 3.5 – Cockpit")
-        self.master.geometry("1000x700")
+    def __init__(self):
+        self.root = tk.Tk()
+        self.root.title("NetMorph Cockpit")
+        self.root.state("zoomed")  # Fullscreen mode
+        self.state = CockpitState()
+        self.plugin_ref = None
+        self.selected_dir = ""
 
-        self.allowed_extensions = {".csv", ".xml", ".log", ".tsv", ".json", ".txt", ".zip", ".xlsx"}
+        self._setup_ui()
+        self.root.protocol("WM_DELETE_WINDOW", self.confirm_exit)
 
-        self._create_menubar()
-        tk.Label(self.master, text="Welcome to NetMorph Cockpit", font=("Segoe UI", 18, "bold")).pack(pady=30)
+    def _setup_ui(self):
+        # ── Toolbar ──
+        toolbar = ttk.Frame(self.root)
+        toolbar.pack(side=tk.TOP, fill=tk.X)
 
-    def _create_menubar(self):
-        menubar = tk.Menu(self.master)
+        ttk.Button(toolbar, text="📂 Select Directory", command=self.choose_directory).pack(side=tk.LEFT, padx=5, pady=5)
+        ttk.Button(toolbar, text="🧩 Open Plugin", command=self.open_plugin).pack(side=tk.LEFT, padx=5)
+        ttk.Button(toolbar, text="🛑 Exit", command=self.confirm_exit).pack(side=tk.RIGHT, padx=5)
 
-        file_menu = tk.Menu(menubar, tearoff=0)
-        file_menu.add_command(label="Select Folder for Processing", command=self._launch_file_selector)
-        menubar.add_cascade(label="FileProcessing", menu=file_menu)
+        # ── Status Bar ──
+        self.status_bar = ttk.Label(self.root, text="🟢 Ready", relief=tk.SUNKEN, anchor="w")
+        self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
 
-        self.master.config(menu=menubar)
+    def choose_directory(self):
+        initial_dir = self.state.get_last_dir() or os.getcwd()
+        dir_path = filedialog.askdirectory(title="Select Working Directory", initialdir=initial_dir)
+        if dir_path:
+            self.state.save_last_dir(dir_path)
+            self.selected_dir = dir_path
+            self.log_status(f"Directory selected: {dir_path}")
 
-    def _launch_file_selector(self):
-        file_window = tk.Toplevel(self.master)
-        file_window.title("📁 Directory Explorer")
-        file_window.geometry("650x450")
-        file_window.lift()
-        file_window.focus_force()
+    def open_plugin(self):
+        if not self.selected_dir:
+            messagebox.showwarning("No Directory", "Please select a directory first.")
+            return
 
-        path_entry = tk.Entry(file_window, width=60)
-        path_entry.pack(pady=10)
+        if self.plugin_ref and self.plugin_ref.winfo_exists():
+            self.plugin_ref.lift()
+            self.plugin_ref.focus_force()
+            self.log_status("Plugin already open.")
+        else:
+            self.plugin_ref = tk.Toplevel(self.root)
+            self.plugin_ref.title("Plugin View: File Listing")
+            self.plugin_ref.geometry("600x400")
+            self.plugin_ref.focus_force()
 
-        def browse_dir():
-            selected_dir = filedialog.askdirectory()
-            if selected_dir:
-                path_entry.delete(0, tk.END)
-                path_entry.insert(0, selected_dir)
-                self._display_file_list(selected_dir)
+            ttk.Label(self.plugin_ref, text=f"📁 Files in: {os.path.basename(self.selected_dir)}", font=("Segoe UI", 12)).pack(pady=10)
 
-        tk.Button(file_window, text="Browse", command=browse_dir).pack(pady=5)
+            listbox = tk.Listbox(self.plugin_ref, width=80, height=20)
+            listbox.pack(padx=10, pady=5, fill=tk.BOTH, expand=True)
 
-        frame = tk.Frame(file_window)
-        frame.pack(fill=tk.BOTH, expand=True)
+            files = os.listdir(self.selected_dir)
+            for file in files:
+                listbox.insert(tk.END, f"• {file}")
 
-        scrollbar = tk.Scrollbar(frame)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+            self.log_status("Plugin window launched with directory contents.")
 
-        self.file_tree = ttk.Treeview(
-            frame,
-            columns=("Filename", "Filetype", "Size (KB)"),
-            show="headings",
-            yscrollcommand=scrollbar.set
-        )
+    def confirm_exit(self):
+        if messagebox.askokcancel("Exit", "Exit NetMorph Cockpit?"):
+            self.log_status("Session terminated.")
+            self.root.destroy()
 
-        self.file_tree.heading("Filename", text="Filename")
-        self.file_tree.heading("Filetype", text="Filetype")
-        self.file_tree.heading("Size (KB)", text="Size (KB)")
+    def log_status(self, msg):
+        self.status_bar.config(text=msg)
+        print("[Status]", msg)
 
-        self.file_tree.column("Filename", width=400)
-        self.file_tree.column("Filetype", width=100)
-        self.file_tree.column("Size (KB)", width=100)
-
-        self.file_tree.pack(fill=tk.BOTH, expand=True)
-        scrollbar.config(command=self.file_tree.yview)
-
-        self._add_hover_preview()
-
-    def _display_file_list(self, directory):
-        for item in self.file_tree.get_children():
-            self.file_tree.delete(item)
-
-        try:
-            files = os.listdir(directory)
-            for f in files:
-                full_path = os.path.join(directory, f)
-                if os.path.isfile(full_path):
-                    _, ext = os.path.splitext(f)
-                    if ext.lower() not in self.allowed_extensions:
-                        continue
-                    name = os.path.splitext(f)[0]
-                    ext = ext.lstrip(".") or "Unknown"
-                    size_kb = os.path.getsize(full_path) // 1024
-                    self.file_tree.insert("", tk.END, values=(name, ext, size_kb))
-        except Exception as e:
-            print(f"⚠️ Error reading directory: {e}")
-
-    def _add_hover_preview(self):
-        tooltip = tk.Label(self.master, bg="#ffffe0", relief="solid", bd=1, padx=5, font=("Segoe UI", 9))
-        tooltip.place_forget()
-
-        def on_motion(event):
-            item = self.file_tree.identify_row(event.y)
-            if item:
-                values = self.file_tree.item(item, "values")
-                tooltip.config(text=f"📄 {values[0]}.{values[1]} | Size: {values[2]} KB")
-                tooltip.place(x=event.x_root + 10, y=event.y_root + 10)
-            else:
-                tooltip.place_forget()
-
-        def on_leave(event):
-            tooltip.place_forget()
-
-        self.file_tree.bind("<Motion>", on_motion)
-        self.file_tree.bind("<Leave>", on_leave)
+    def run(self):
+        self.root.mainloop()

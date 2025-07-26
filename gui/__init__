@@ -1,2 +1,0 @@
-self.add_file_discovery()
-self.add_health_dashboard()

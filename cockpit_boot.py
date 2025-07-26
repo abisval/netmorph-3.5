@@ -1,10 +1,10 @@
 import tkinter as tk
 from gui import CockpitGUI
-
+from gui.cockpit_gui import CockpitGUI
+CockpitGUI().run()
 def main():
-    root = tk.Tk()
-    cockpit = CockpitGUI(root)
-    root.mainloop()
+    cockpit = CockpitGUI()
+    cockpit.run()
 
 if __name__ == "__main__":
     main()
