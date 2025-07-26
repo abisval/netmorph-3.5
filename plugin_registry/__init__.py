@@ -1,0 +1,1 @@
+# Plugin_registry init

@@ -1,80 +1,107 @@
-# gui/cockpit_gui.py
-
 import tkinter as tk
-from tkinter import ttk
+from tkinter import filedialog, ttk
+import os
 
-from gui.DataPrepGUI import DataPrepGUI
-from gui.SemanticValidatorGUI import SemanticValidatorGUI
-from gui.TrafficForecastGUI import TrafficForecastGUI
-from gui.CoverageIntelligenceGUI import CoverageIntelligenceGUI
-from gui.PluginManagerGUI import PluginManagerGUI
-if __name__ == "__main__":
-    import tkinter as tk
-    from plugin_registry.registry import load_all_plugins
-    from config_loader.config_registry import load_all_configs
 
-    root = tk.Tk()
-    root.title("NetMorph 3.5 Cockpit [Standalone Test]")
-    root.geometry("1024x768")
-
-    plugins = load_all_plugins()
-    configs = load_all_configs()
-
-    app = NetMorphCockpit(root, plugins, configs)
-    root.mainloop()
-class NetMorphCockpit:
-    def __init__(self, master, plugin_registry, config_registry):
+class CockpitGUI:
+    def __init__(self, master):
         self.master = master
-        self.master.title("NetMorph 3.5 – Semantic Cockpit")
-        self.master.geometry("1200x800")
+        self.master.title("🧭 NetMorph 3.5 – Cockpit")
+        self.master.geometry("1000x700")
 
-        # Header
-        header = tk.Label(master, text="📡 NetMorph Cockpit", font=("Helvetica", 16, "bold"), bg="#333", fg="#fff")
-        header.pack(fill=tk.X, pady=5)
+        self.allowed_extensions = {".csv", ".xml", ".log", ".tsv", ".json", ".txt", ".zip", ".xlsx"}
 
-        # Tabs
-        self.notebook = ttk.Notebook(master)
-        self.notebook.pack(expand=True, fill=tk.BOTH)
+        self._create_menubar()
+        tk.Label(self.master, text="Welcome to NetMorph Cockpit", font=("Segoe UI", 18, "bold")).pack(pady=30)
 
-        # Create Tab Frames
-        self.load_tabs(plugin_registry, config_registry)
+    def _create_menubar(self):
+        menubar = tk.Menu(self.master)
 
-    def load_tabs(self, plugin_registry, config_registry):
-        # Panel A: Data Prep
-        data_prep_tab = tk.Frame(self.notebook)
-        DataPrepGUI(data_prep_tab, plugin_registry, config_registry)
-        self.notebook.add(data_prep_tab, text="Data Prep")
+        file_menu = tk.Menu(menubar, tearoff=0)
+        file_menu.add_command(label="Select Folder for Processing", command=self._launch_file_selector)
+        menubar.add_cascade(label="FileProcessing", menu=file_menu)
 
-        # Panel B: Semantic Validation
-        validator_tab = tk.Frame(self.notebook)
-        SemanticValidatorGUI(validator_tab, plugin_registry, config_registry)
-        self.notebook.add(validator_tab, text="Semantic Validation")
+        self.master.config(menu=menubar)
 
-        # Panel C: Traffic Forecast
-        forecast_tab = tk.Frame(self.notebook)
-        TrafficForecastGUI(forecast_tab, plugin_registry, config_registry)
-        self.notebook.add(forecast_tab, text="Traffic Forecast")
+    def _launch_file_selector(self):
+        file_window = tk.Toplevel(self.master)
+        file_window.title("📁 Directory Explorer")
+        file_window.geometry("650x450")
+        file_window.lift()
+        file_window.focus_force()
 
-        # Panel D: Coverage Intelligence
-        coverage_tab = tk.Frame(self.notebook)
-        CoverageIntelligenceGUI(coverage_tab, plugin_registry, config_registry)
-        self.notebook.add(coverage_tab, text="Coverage Intelligence")
+        path_entry = tk.Entry(file_window, width=60)
+        path_entry.pack(pady=10)
 
-        # Panel E: Plugin Manager
-        plugin_tab = tk.Frame(self.notebook)
-        PluginManagerGUI(plugin_tab, plugin_registry, config_registry)
-        self.notebook.add(plugin_tab, text="Plugin Manager")# Placeholder
-if __name__ == "__main__":
-    import tkinter as tk
-    from plugin_registry.registry import load_all_plugins
-    from config_loader.config_registry import load_all_configs
+        def browse_dir():
+            selected_dir = filedialog.askdirectory()
+            if selected_dir:
+                path_entry.delete(0, tk.END)
+                path_entry.insert(0, selected_dir)
+                self._display_file_list(selected_dir)
 
-    root = tk.Tk()
-    root.title("NetMorph 3.5 Cockpit [Standalone Test]")
-    root.geometry("1024x768")
+        tk.Button(file_window, text="Browse", command=browse_dir).pack(pady=5)
 
-    plugins = load_all_plugins()
-    configs = load_all_configs()
+        frame = tk.Frame(file_window)
+        frame.pack(fill=tk.BOTH, expand=True)
 
-    app = NetMorphCockpit(root, plugins, configs)
-    root.mainloop()
+        scrollbar = tk.Scrollbar(frame)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        self.file_tree = ttk.Treeview(
+            frame,
+            columns=("Filename", "Filetype", "Size (KB)"),
+            show="headings",
+            yscrollcommand=scrollbar.set
+        )
+
+        self.file_tree.heading("Filename", text="Filename")
+        self.file_tree.heading("Filetype", text="Filetype")
+        self.file_tree.heading("Size (KB)", text="Size (KB)")
+
+        self.file_tree.column("Filename", width=400)
+        self.file_tree.column("Filetype", width=100)
+        self.file_tree.column("Size (KB)", width=100)
+
+        self.file_tree.pack(fill=tk.BOTH, expand=True)
+        scrollbar.config(command=self.file_tree.yview)
+
+        self._add_hover_preview()
+
+    def _display_file_list(self, directory):
+        for item in self.file_tree.get_children():
+            self.file_tree.delete(item)
+
+        try:
+            files = os.listdir(directory)
+            for f in files:
+                full_path = os.path.join(directory, f)
+                if os.path.isfile(full_path):
+                    _, ext = os.path.splitext(f)
+                    if ext.lower() not in self.allowed_extensions:
+                        continue
+                    name = os.path.splitext(f)[0]
+                    ext = ext.lstrip(".") or "Unknown"
+                    size_kb = os.path.getsize(full_path) // 1024
+                    self.file_tree.insert("", tk.END, values=(name, ext, size_kb))
+        except Exception as e:
+            print(f"⚠️ Error reading directory: {e}")
+
+    def _add_hover_preview(self):
+        tooltip = tk.Label(self.master, bg="#ffffe0", relief="solid", bd=1, padx=5, font=("Segoe UI", 9))
+        tooltip.place_forget()
+
+        def on_motion(event):
+            item = self.file_tree.identify_row(event.y)
+            if item:
+                values = self.file_tree.item(item, "values")
+                tooltip.config(text=f"📄 {values[0]}.{values[1]} | Size: {values[2]} KB")
+                tooltip.place(x=event.x_root + 10, y=event.y_root + 10)
+            else:
+                tooltip.place_forget()
+
+        def on_leave(event):
+            tooltip.place_forget()
+
+        self.file_tree.bind("<Motion>", on_motion)
+        self.file_tree.bind("<Leave>", on_leave)
